@@ -20,24 +20,24 @@ app.get('/', (req, res) => {
   res.send('Gambling App Backend');
 });
 
+const bcrypt = require('bcrypt');
+
 // Login endpoint
 app.post('/api/login', async (req, res) => {
-  const { email, password } = req.body;
+  const { username, password } = req.body;
   try {
-    const [rows] = await pool.promise().query('SELECT * FROM users WHERE email = ?', [email]);
-    const user = rows[0];
-
-    if (!user) {
-      return res.status(401).json({ error: 'User not found' });
+    const [user] = await pool.promise().query(
+      'SELECT * FROM gambling_app.users WHERE username = ?',
+      [username]
+    );
+    if (user.length === 0) {
+      return res.status(401).json({ error: 'Invalid credentials' });
     }
-
-    // For now, assume the password is correct (we’ll add proper hashing later)
-    if (password !== 'hashed_password') {
-      return res.status(401).json({ error: 'Invalid password' });
+    const isMatch = await bcrypt.compare(password, user[0].password_hash);
+    if (!isMatch) {
+      return res.status(401).json({ error: 'Invalid credentials' });
     }
-
-    // Return a token (for now, just a placeholder)
-    res.json({ token: 'fake-token', user });
+    res.json({ success: true });
   } catch (err) {
     console.error(err);
     res.status(500).send('Server error');
@@ -96,77 +96,79 @@ app.get('/api/games', async (req, res) => {
   }
 });
 
+
+
 const http = require('http');
 const { Server } = require('socket.io');
 const ioClient = require('socket.io-client');
 
 const server = http.createServer(app);
-const io = new Server(server);
+
+const io = new Server(server, {
+  cors: {
+    origin: 'http://localhost:3000', // Allow connections from the frontend
+    methods: ['GET', 'POST'], // Allow specific HTTP methods
+    credentials: true // Allow credentials (e.g., cookies)
+  }
+});
 
 // Connect to SquadJS Socket.IO API
 const squadSocket = ioClient('http://localhost:3001', {
-  query: { securityToken: '1' }
+  query: { securityToken: '2' }
+});
+
+// Listen for layer change events
+squadSocket.on('UPDATED_LAYER_INFORMATION', (data) => {
+  try {
+    io.emit('gameEvent', { type: 'layerChange', data });
+    console.log('Emitted gameEvent:', { type: 'layerChange', data });
+  } catch (err) {
+    console.error('Error emitting layerChange event:', err);
+  }
+});
+
+// Listen for player join events
+squadSocket.on('PLAYER_CONNECTED', (data) => {
+  try {
+    io.emit('gameEvent', { type: 'playerJoin', data });
+    console.log('Emitted gameEvent:', { type: 'playerJoin', data });
+  } catch (err) {
+    console.error('Error emitting playerJoin event:', err);
+  }
+});
+
+// Listen for player leave events
+squadSocket.on('PLAYER_DISCONNECTED', (data) => {
+  try {
+    io.emit('gameEvent', { type: 'playerLeave', data });
+    console.log('Emitted gameEvent:', { type: 'playerLeave', data });
+  } catch (err) {
+    console.error('Error emitting playerLeave event:', err);
+  }
+});
+
+// Listen for player death events
+squadSocket.on('PLAYER_DIED', (data) => {
+  try {
+    io.emit('gameEvent', { type: 'playerDied', data });
+    console.log('Emitted gameEvent:', { type: 'playerDied', data });
+  } catch (err) {
+    console.error('Error emitting playerDied event:', err);
+  }
+});
+
+// Listen for player revive events
+squadSocket.on('PLAYER_REVIVED', (data) => {
+  try {
+    io.emit('gameEvent', { type: 'playerRevived', data });
+    console.log('Emitted gameEvent:', { type: 'playerRevived', data });
+  } catch (err) {
+    console.error('Error emitting playerRevived event:', err);
+  }
 });
 
 squadSocket.on('connect', () => {
   console.log('Connected to SquadJS Socket.IO API');
-});
-
-// Listen for live events
-squadSocket.on('playerJoin', async (data) => {
-  try {
-    await pool.promise().query(
-      'INSERT INTO game_events (event_type, player_name) VALUES (?, ?)',
-      ['playerJoin', data.playerName]
-    );
-    io.emit('gameEvent', { type: 'playerJoin', data });
-    console.log('Player Joined:', data);
-  } catch (err) {
-    console.error('Error storing playerJoin event:', err);
-  }
-});
-
-squadSocket.on('playerLeave', async (data) => {
-  try {
-    await pool.promise().query(
-      'INSERT INTO game_events (event_type, player_name) VALUES (?, ?)',
-      ['playerLeave', data.playerName]
-    );
-    io.emit('gameEvent', { type: 'playerLeave', data });
-    console.log('Player Left:', data);
-  } catch (err) {
-    console.error('Error storing playerLeave event:', err);
-  }
-});
-
-squadSocket.on('playerKill', async (data) => {
-  try {
-    await pool.promise().query(
-      'INSERT INTO game_events (event_type, killer_name, victim_name) VALUES (?, ?, ?)',
-      ['playerKill', data.killerName, data.victimName]
-    );
-    io.emit('gameEvent', { type: 'playerKill', data });
-    console.log('Player Kill:', data);
-  } catch (err) {
-    console.error('Error storing playerKill event:', err);
-  }
-});
-
-squadSocket.on('roundEnd', async (data) => {
-  try {
-    await pool.promise().query(
-      'INSERT INTO game_events (event_type, winning_team) VALUES (?, ?)',
-      ['roundEnd', data.winningTeam]
-    );
-    io.emit('gameEvent', { type: 'roundEnd', data });
-    console.log('Round Ended:', data);
-  } catch (err) {
-    console.error('Error storing roundEnd event:', err);
-  }
-});
-
-squadSocket.on('disconnect', () => {
-  console.log('Disconnected from SquadJS Socket.IO API');
 });
 
 // Fetch details of a specific game event
