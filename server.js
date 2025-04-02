@@ -96,8 +96,6 @@ app.get('/api/games', async (req, res) => {
   }
 });
 
-
-
 const http = require('http');
 const { Server } = require('socket.io');
 const ioClient = require('socket.io-client');
@@ -117,54 +115,29 @@ const squadSocket = ioClient('http://localhost:3001', {
   query: { securityToken: '2' }
 });
 
-// Listen for layer change events
-squadSocket.on('UPDATED_LAYER_INFORMATION', (data) => {
-  try {
-    io.emit('gameEvent', { type: 'layerChange', data });
-    console.log('Emitted gameEvent:', { type: 'layerChange', data });
-  } catch (err) {
-    console.error('Error emitting layerChange event:', err);
-  }
-});
-
 // Listen for player join events
 squadSocket.on('PLAYER_CONNECTED', (data) => {
-  try {
-    io.emit('gameEvent', { type: 'playerJoin', data });
-    console.log('Emitted gameEvent:', { type: 'playerJoin', data });
-  } catch (err) {
-    console.error('Error emitting playerJoin event:', err);
-  }
+  io.emit('gameEvent', { type: 'playerJoin', data });
 });
 
 // Listen for player leave events
 squadSocket.on('PLAYER_DISCONNECTED', (data) => {
-  try {
-    io.emit('gameEvent', { type: 'playerLeave', data });
-    console.log('Emitted gameEvent:', { type: 'playerLeave', data });
-  } catch (err) {
-    console.error('Error emitting playerLeave event:', err);
-  }
+  io.emit('gameEvent', { type: 'playerLeave', data });
 });
 
 // Listen for player death events
 squadSocket.on('PLAYER_DIED', (data) => {
-  try {
-    io.emit('gameEvent', { type: 'playerDied', data });
-    console.log('Emitted gameEvent:', { type: 'playerDied', data });
-  } catch (err) {
-    console.error('Error emitting playerDied event:', err);
-  }
+  io.emit('gameEvent', { type: 'playerDied', data });
 });
 
 // Listen for player revive events
 squadSocket.on('PLAYER_REVIVED', (data) => {
-  try {
-    io.emit('gameEvent', { type: 'playerRevived', data });
-    console.log('Emitted gameEvent:', { type: 'playerRevived', data });
-  } catch (err) {
-    console.error('Error emitting playerRevived event:', err);
-  }
+  io.emit('gameEvent', { type: 'playerRevived', data });
+});
+
+// Listen for layer change events
+squadSocket.on('UPDATED_LAYER_INFORMATION', (data) => {
+  io.emit('gameEvent', { type: 'layerChange', data });
 });
 
 squadSocket.on('connect', () => {
@@ -188,23 +161,13 @@ app.get('/api/games/:id', async (req, res) => {
 
 // Place a bet
 app.post('/api/bets', async (req, res) => {
-  const { userId, gameId, amount } = req.body;
+  const { userId, eventType, eventData, amount } = req.body;
   try {
-    // Check if the user and game exist
-    const [user] = await pool.promise().query('SELECT * FROM users WHERE id = ?', [userId]);
-    const [game] = await pool.promise().query('SELECT * FROM game_events WHERE id = ?', [gameId]);
-
-    if (user.length === 0 || game.length === 0) {
-      return res.status(404).json({ error: 'User or game not found' });
-    }
-
-    // Insert the bet
     const [result] = await pool.promise().query(
-      'INSERT INTO bets (user_id, game_id, amount) VALUES (?, ?, ?)',
-      [userId, gameId, amount]
+      'INSERT INTO bets (user_id, event_type, event_data, amount) VALUES (?, ?, ?, ?)',
+      [userId, eventType, JSON.stringify(eventData), amount]
     );
-
-    res.json({ message: 'Bet placed successfully', betId: result.insertId });
+    res.json({ success: true, betId: result.insertId });
   } catch (err) {
     console.error(err);
     res.status(500).send('Server error');
